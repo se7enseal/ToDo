@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>售后待办提醒</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      background: #fff;
+      color: #333;
+      overflow: hidden;
+      user-select: none;
+    }
+    .reminder-container {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .reminder-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #1677ff;
+    }
+    .reminder-icon {
+      font-size: 28px;
+      margin-right: 10px;
+    }
+    .reminder-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1677ff;
+    }
+    .reminder-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .reminder-row {
+      display: flex;
+      margin-bottom: 8px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .reminder-label {
+      color: #999;
+      width: 70px;
+      flex-shrink: 0;
+    }
+    .reminder-value {
+      color: #333;
+      flex: 1;
+      word-break: break-all;
+    }
+    .reminder-value.highlight {
+      color: #ff4d4f;
+      font-weight: 600;
+    }
+    .reminder-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .btn {
+      flex: 1;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-complete {
+      background: #52c41a;
+      color: #fff;
+    }
+    .btn-complete:hover { background: #45b017; }
+    .btn-snooze {
+      background: #fa8c16;
+      color: #fff;
+    }
+    .btn-snooze:hover { background: #e07c10; }
+    .btn-close {
+      background: #f0f0f0;
+      color: #666;
+    }
+    .btn-close:hover { background: #e0e0e0; }
+    .snooze-options {
+      display: none;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .snooze-options.show {
+      display: flex;
+    }
+    .snooze-btn {
+      padding: 6px 14px;
+      border: 1px solid #fa8c16;
+      border-radius: 4px;
+      background: #fff;
+      color: #fa8c16;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .snooze-btn:hover {
+      background: #fff7e6;
+    }
+    .flash {
+      animation: flash-border 1s ease-in-out 3;
+    }
+    @keyframes flash-border {
+      0%, 100% { border-color: #1677ff; }
+      50% { border-color: #ff4d4f; }
+    }
+  </style>
+</head>
+<body>
+  <div class="reminder-container" id="app">
+    <div class="reminder-header">
+      <span class="reminder-icon">&#x1F514;</span>
+      <span class="reminder-title">售后待办提醒</span>
+    </div>
+    <div class="reminder-body" id="body"></div>
+    <div class="snooze-options" id="snoozeOptions">
+      <button class="snooze-btn" onclick="doSnooze(10)">10 分钟后</button>
+      <button class="snooze-btn" onclick="doSnooze(30)">30 分钟后</button>
+      <button class="snooze-btn" onclick="doSnooze(60)">1 小时后</button>
+      <button class="snooze-btn" onclick="doSnooze(1440)">明天</button>
+    </div>
+    <div class="reminder-actions">
+      <button class="btn btn-complete" onclick="markComplete()">标记已完成</button>
+      <button class="btn btn-snooze" onclick="toggleSnooze()">稍后提醒</button>
+      <button class="btn btn-close" onclick="closePopup()">关闭</button>
+    </div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    let currentTodo = null;
+
+    ipcRenderer.on('reminder-data', (_, todo) => {
+      currentTodo = todo;
+      renderTodo(todo);
+    });
+
+    function renderTodo(todo) {
+      const body = document.getElementById('body');
+      body.innerHTML = `
+        <div class="reminder-row">
+          <span class="reminder-label">标题：</span>
+          <span class="reminder-value highlight">${esc(todo.title)}</span>
+        </div>
+        ${todo.order_no ? `<div class="reminder-row">
+          <span class="reminder-label">订单号：</span>
+          <span class="reminder-value">${esc(todo.order_no)}</span>
+        </div>` : ''}
+        ${todo.aftersale_type ? `<div class="reminder-row">
+          <span class="reminder-label">售后类型：</span>
+          <span class="reminder-value">${esc(todo.aftersale_type)}</span>
+        </div>` : ''}
+        ${todo.platform ? `<div class="reminder-row">
+          <span class="reminder-label">平台：</span>
+          <span class="reminder-value">${esc(todo.platform)}</span>
+        </div>` : ''}
+        ${todo.buyer ? `<div class="reminder-row">
+          <span class="reminder-label">买家：</span>
+          <span class="reminder-value">${esc(todo.buyer)}</span>
+        </div>` : ''}
+        ${todo.amount ? `<div class="reminder-row">
+          <span class="reminder-label">金额：</span>
+          <span class="reminder-value">¥${esc(todo.amount)}</span>
+        </div>` : ''}
+        ${todo.note ? `<div class="reminder-row">
+          <span class="reminder-label">备注：</span>
+          <span class="reminder-value">${esc(todo.note)}</span>
+        </div>` : ''}
+      `;
+      // 闪烁提醒
+      document.getElementById('app').classList.add('flash');
+    }
+
+    function esc(str) {
+      if (!str) return '';
+      const div = document.createElement('div');
+      div.textContent = String(str);
+      return div.innerHTML;
+    }
+
+    function markComplete() {
+      if (!currentTodo) return;
+      ipcRenderer.send('reminder-action', { action: 'complete', todoId: currentTodo.id });
+    }
+
+    function toggleSnooze() {
+      const opts = document.getElementById('snoozeOptions');
+      opts.classList.toggle('show');
+    }
+
+    function doSnooze(minutes) {
+      if (!currentTodo) return;
+      ipcRenderer.send('reminder-action', { action: 'snooze', todoId: currentTodo.id, minutes });
+    }
+
+    function closePopup() {
+      if (!currentTodo) return;
+      ipcRenderer.send('reminder-action', { action: 'close', todoId: currentTodo.id });
+    }
+  </script>
+</body>
+</html>
